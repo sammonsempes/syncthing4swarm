@@ -1,0 +1,29 @@
+networks:
+  syncthing4swarm_prometheus:
+    external: true
+
+services:
+  syncthing4swarm:
+    image: syncthing/syncthing:2.0.10
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    command: ["/bin/syncthing", "serve"]
+    volumes:
+      - /var/syncthing/data:/var/syncthing/data
+    deploy:
+      mode: global
+    environment:
+      - STGUIAPIKEY=A1B2C3
+      - SYNCTHING_PORT=8384
+      - SYNCTHING_FOLDER_ID=shared
+      - SYNCTHING_FOLDER_PATH=/var/syncthing/data
+    configs:
+      - source: syncthing4swarm_config
+        target: /entrypoint.sh
+        mode: 0555
+    networks:
+      - syncthing4swarm_prometheus
+
+
+configs:
+  syncthing4swarm_config:
+    file: ../entrypoint.sh

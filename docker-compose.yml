@@ -1,0 +1,19 @@
+networks:
+  syncthing4swarm:
+    driver: overlay
+    internal: true
+
+services:
+  syncthing4swarm:
+    image: syncthing4swarm/syncthing4swarm
+    volumes:
+      - /var/syncthing/data:/var/syncthing/data
+    deploy:
+      mode: global
+    environment:
+      - STGUIAPIKEY=A1B2C3 # CHANGE ME
+      - SYNCTHING_PORT=8384
+      - SYNCTHING_FOLDER_ID=shared
+      - SYNCTHING_FOLDER_PATH=/var/syncthing/data
+    networks:
+      - syncthing4swarm_prometheus
