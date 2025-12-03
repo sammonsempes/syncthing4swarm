@@ -1,6 +1,6 @@
 # Syncthing4Swarm
 
-[![GitHub stars](https://img.shields.io/github/stars/username/repository?style=social)](https://github.com/sammonsempes/syncthing4swarm)
+[![GitHub stars](https://img.shields.io/github/stars/sammonsempes/syncthing4swarm?style=social)](https://github.com/sammonsempes/syncthing4swarm)
 
 **Automatic file synchronization for Docker Swarm**
 
