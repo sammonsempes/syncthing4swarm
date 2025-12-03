@@ -1,5 +1,7 @@
 # Syncthing4Swarm
 
+[![GitHub stars](https://img.shields.io/github/stars/username/repository?style=social)](https://github.com/sammonsempes/syncthing4swarm)
+
 **Automatic file synchronization for Docker Swarm**
 
 Syncthing4Swarm deploys [Syncthing](https://syncthing.net/) across a Docker Swarm cluster with automatic peer discovery and zero-touch configuration.
