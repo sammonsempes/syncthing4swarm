@@ -1,4 +1,4 @@
-FROM syncthing/syncthing:2.0.13
+FROM syncthing/syncthing:2.0.11
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod 0555 /entrypoint.sh
