@@ -5,8 +5,8 @@ set -eu
 [ -n "${UMASK:-}" ] && umask "$UMASK"
 
 (
-    # Attendre que Syncthing soit prêt
-    echo "Waiting for Syncthing to start for configuration..."
+    # Wait for Syncthing to be ready
+    echo "=== Waiting for Syncthing to start for configuration..."
     until curl -s http://localhost:8384/rest/system/status > /dev/null 2>&1; do
         sleep 1
     done
@@ -19,7 +19,6 @@ set -eu
     KEY="${STGUIAPIKEY:-}"
     PORT="${SYNCTHING_PORT:-8384}"
     SYNC_PORT="${SYNCTHING_SYNC_PORT:-22000}"
-    DISABLE_GLOBAL="${SYNCTHING_DISABLE_GLOBAL:-true}"
     FOLDER_ID="${SYNCTHING_FOLDER_ID:-shared}"
     FOLDER_PATH="${SYNCTHING_FOLDER_PATH:-/var/syncthing/data}"
     FOLDER_LABEL="${SYNCTHING_FOLDER_LABEL:-Shared}"
@@ -66,38 +65,32 @@ set -eu
 
     # Disable global discovery and relays via API
     disable_global_features() {
-        if [ "$DISABLE_GLOBAL" = "true" ]; then
-            echo "Disabling global discovery and relays..."
-            
-            # Get current options
-            options=$(syncthing_request "GET" "http://localhost:${PORT}/rest/config/options")
-            
-            # Check if already disabled
-            if echo "$options" | grep -q '"relaysEnabled"[[:space:]]*:[[:space:]]*false' && \
-               echo "$options" | grep -q '"globalAnnounceEnabled"[[:space:]]*:[[:space:]]*false'; then
-                echo "Global features already disabled"
-                return 0
-            fi
-            
-            # Patch options to disable relays and global discovery but KEEP local discovery
-            syncthing_request "PATCH" "http://localhost:${PORT}/rest/config/options" \
-                '{"globalAnnounceEnabled": false, "relaysEnabled": false, "natEnabled": false, "localAnnounceEnabled": true}' > /dev/null
-            
-            echo "Global discovery, relays and NAT disabled (local discovery kept)"
+        echo "=== Disabling global discovery and relays..."
+        
+        # Get current options
+        options=$(syncthing_request "GET" "http://localhost:${PORT}/rest/config/options")
+        
+        # Check if already disabled
+        if echo "$options" | grep -q '"globalAnnounceEnabled".*false' && \
+            echo "$options" | grep -q '"relaysEnabled".*false' && \
+            echo "$options" | grep -q '"natEnabled".*false' && \
+            echo "$options" | grep -q '"localAnnounceEnabled".*true' && \
+            echo "$options" | grep -q '"progressUpdateIntervalS".*-1' && \
+            echo "$options" | grep -q '"setLowPriority".*false'; then
+            echo "=== Global features already disabled"
+            return 0
         fi
+        
+        # Patch options to disable relays and global discovery but KEEP local discovery
+        syncthing_request "PATCH" "http://localhost:${PORT}/rest/config/options" \
+            '{"globalAnnounceEnabled": false, "relaysEnabled": false, "natEnabled": false, "localAnnounceEnabled": true, "progressUpdateIntervalS": -1, "setLowPriority": false}' > /dev/null
+        
+        echo "=== Global discovery, relays and NAT disabled (local discovery kept)"
     }
 
     # Create shared folder if it doesn't exist
     create_shared_folder() {
-        echo "Checking if folder '${FOLDER_ID}' exists..."
-        
-        # Check if folder already exists
-        if syncthing_request "GET" "http://localhost:${PORT}/rest/config/folders/${FOLDER_ID}" > /dev/null 2>&1; then
-            echo "Folder '${FOLDER_ID}' already exists"
-            return 0
-        fi
-        
-        echo "Creating folder '${FOLDER_ID}' at '${FOLDER_PATH}'..."
+        echo "=== Creating folder '${FOLDER_ID}' at '${FOLDER_PATH}'..."
         
         # Create the directory if it doesn't exist
         mkdir -p "${FOLDER_PATH}"
@@ -115,16 +108,21 @@ set -eu
     "devices": [{"deviceID": "${my_id}"}],
     "rescanIntervalS": 3600,
     "fsWatcherEnabled": true,
-    "fsWatcherDelayS": 10,
     "ignorePerms": false,
-    "autoNormalize": true
+    "autoNormalize": true,
+    "scanProgressIntervalS": -1,
+    "caseSensitiveFS": true,
+    "sendOwnership": true,
+    "syncOwnership": true,
+    "maxConflicts": 0,
+    "fsWatcherDelayS": 1
 }
 EOF
 )
         
         syncthing_request "POST" "http://localhost:${PORT}/rest/config/folders" "$folder_config" > /dev/null
         
-        echo "Folder '${FOLDER_ID}' created successfully"
+        echo "=== Folder '${FOLDER_ID}' created successfully"
     }
 
     # Get local IP and subnet
@@ -146,17 +144,17 @@ EOF
     scan_for_syncthing() {
         prefix="$1"
         
-        echo "Scanning ${prefix}.0/24 for Syncthing instances..." >&2
+        echo "=== Scanning ${prefix}.0/24 for Syncthing instances..." >&2
         
-        for i in $(seq 1 254); do
-            ip="${prefix}.${i}"
-            if curl -s -f --max-time 1 -o /dev/null \
-                -H "X-API-Key: ${KEY}" \
-                "http://${ip}:${PORT}/rest/system/status" 2>/dev/null; then
-                echo "Found Syncthing at ${ip}" >&2
+        seq 1 254 | xargs -P 50 -I {} sh -c '
+            ip="'"$prefix"'.{}"
+            if curl -s -f --max-time 3 -o /dev/null \
+                -H "X-API-Key: '"$KEY"'" \
+                "http://${ip}:'"$PORT"'/rest/system/status" 2>/dev/null; then
+                echo "=== Found Syncthing at ${ip}" >&2
                 echo "$ip"
             fi
-        done
+        '
     }
 
     # Check if a string contains a substring
@@ -179,12 +177,12 @@ EOF
         existing=$(syncthing_request "GET" "$url" | json_extract_array "deviceID")
         
         if ! contains "$existing" "$device_id"; then
-            echo "Adding device ${device_id} to Syncthing ${target_ip} with address tcp://${device_ip}:${SYNC_PORT}"
+            echo "=== Adding device ${device_id} to Syncthing ${target_ip} with address tcp://${device_ip}:${SYNC_PORT}"
             payload=$(printf '{"deviceID": "%s", "addresses": ["tcp://%s:%s"], "autoAcceptFolders": true}' "$device_id" "$device_ip" "$SYNC_PORT")
             syncthing_request "POST" "$url" "$payload" > /dev/null
         else
             # Device exists, update address
-            echo "Updating device ${device_id} address on Syncthing ${target_ip}"
+            echo "=== Updating device ${device_id} address on Syncthing ${target_ip}"
             device_url="http://${target_ip}:${PORT}/rest/config/devices/${device_id}"
             payload=$(printf '{"addresses": ["tcp://%s:%s"]}' "$device_ip" "$SYNC_PORT")
             syncthing_request "PATCH" "$device_url" "$payload" > /dev/null 2>&1 || true
@@ -246,7 +244,7 @@ EOF
             
             # Check if folder exists on this instance
             if ! folder=$(syncthing_request "GET" "$url" 2>/dev/null); then
-                echo "Folder '${folder_id}' does not exist on ${ip}, skipping..."
+                echo "=== Folder '${folder_id}' does not exist on ${ip}, skipping..."
                 continue
             fi
 
@@ -255,7 +253,7 @@ EOF
             expected_sorted=$(sort_unique "$ids_str")
 
             if [ "$existing_sorted" != "$expected_sorted" ]; then
-                echo "patch folder devices at Syncthing ${ip} ${folder_id}"
+                echo "=== Patch folder devices at Syncthing ${ip} ${folder_id}"
 
                 devices_payload=$(build_devices_json "$ids_str")
                 syncthing_request "PATCH" "$url" "$devices_payload" > /dev/null
@@ -273,24 +271,24 @@ EOF
         
         # Get local IP
         local_ip=$(get_local_network)
-        echo "Local IP: $local_ip"
+        echo "=== Local IP: $local_ip"
         
         if [ -z "$local_ip" ]; then
-            echo "Error: Could not determine local IP"
+            echo "=== Error: Could not determine local IP"
             return 1
         fi
         
         # Get network prefix
         prefix=$(get_network_prefix "$local_ip")
-        echo "Network prefix: $prefix"
+        echo "=== Network prefix: $prefix"
         
         # Scan for Syncthing instances (output goes to stdout, logs to stderr)
         ips_str=$(scan_for_syncthing "$prefix" | tr '\n' ' ' | sed 's/ $//')
         
-        echo "Got IPs from network scan: ${ips_str}"
+        echo "=== Got IPs from network scan: ${ips_str}"
 
         if [ -z "$ips_str" ]; then
-            echo "No Syncthing instances found, skipping..."
+            echo "=== No Syncthing instances found, skipping..."
             return 0
         fi
 
@@ -301,7 +299,7 @@ EOF
             response=$(syncthing_request "GET" "http://${ip}:${PORT}/rest/system/status") || continue
             id=$(echo "$response" | json_extract "myID")
             if [ -z "$id" ] || [ "$id" = "null" ]; then
-                echo "Warning: Failed to get ID from ${ip}, skipping..."
+                echo "=== Warning: Failed to get ID from ${ip}, skipping..."
                 continue
             fi
             
@@ -323,16 +321,16 @@ EOF
         # Deduplicate IDs
         ids_str=$(sort_unique "$ids_str")
 
-        echo "Got IDs from Syncthing: ${ids_str}"
-        echo "IP:ID pairs: ${pairs}"
+        echo "=== Got IDs from Syncthing: ${ids_str}"
+        echo "=== IP:ID pairs: ${pairs}"
 
         if [ -z "$ids_str" ]; then
-            echo "No valid Syncthing IDs found"
+            echo "=== No valid Syncthing IDs found"
             return 1
         fi
 
         # Configure devices with static addresses
-        echo "Configuring devices with static addresses..."
+        echo "=== Configuring devices with static addresses..."
         configure_devices_with_addresses "$pairs"
         
         # Update folder to include all devices
@@ -348,8 +346,22 @@ EOF
         done
         
         sync_folder_devices "$FOLDER_ID" "$ips_for_folder" "$ids_str"
+
+        # Set maxConflicts to 0 and fsWatcherDelayS to 1
+        folder_config=$(syncthing_request "GET" "http://localhost:${PORT}/rest/config/folders/${FOLDER_ID}")
+        sleep 20
+        current_max_conflicts=$(echo "$folder_config" | grep -o '"maxConflicts"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
+        current_fs_watcher=$(echo "$folder_config" | grep -o '"fsWatcherDelayS"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
         
-        echo "Configuration complete!"
+        echo "=== Current maxConflicts: ${current_max_conflicts}"
+        echo "=== Current fsWatcherDelayS: ${current_fs_watcher}"
+        
+        if [ "$current_max_conflicts" != "0" ] || [ "$current_fs_watcher" != "1" ]; then
+            echo "=== Updating maxConflicts to 0 and fsWatcherDelayS to 1..."
+            syncthing_request "PATCH" "http://localhost:${PORT}/rest/config/folders/${FOLDER_ID}" '{"maxConflicts": 0, "fsWatcherDelayS": 1}'
+        fi
+        
+        echo "=== Configuration complete! ==="
     }
 
     main() {

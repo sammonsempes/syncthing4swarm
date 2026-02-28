@@ -1,0 +1,81 @@
+name: Build on Upstream Syncthing Release
+
+on:
+  schedule:
+    # Check for new Syncthing releases every day at 00:00
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      force_version:
+        description: 'Force build for a specific Syncthing version (e.g. v1.29.0). Leave empty to auto-detect latest.'
+        required: false
+        default: ''
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get latest Syncthing release tag
+        id: upstream
+        env:
+          FORCE_VERSION: ${{ github.event.inputs.force_version }}
+        run: |
+          if [ -n "$FORCE_VERSION" ]; then
+            TAG="$FORCE_VERSION"
+          else
+            TAG=$(curl -sf https://api.github.com/repos/syncthing/syncthing/releases | jq -r '[.[] | select(.prerelease == false and .draft == false)][0].tag_name')
+          fi
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "Failed to fetch upstream release tag"
+            exit 1
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          # Strip leading 'v' for Docker tag (v1.29.0 -> 1.29.0)
+          DOCKER_TAG="${TAG#v}"
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          echo "Upstream Syncthing release: $TAG (Docker tag: $DOCKER_TAG)"
+
+      - name: Check if Docker image already exists
+        id: check_existing
+        run: |
+          DOCKER_TAG="${{ steps.upstream.outputs.docker_tag }}"
+          if docker manifest inspect suitdeer/syncthing4swarm:${DOCKER_TAG} > /dev/null 2>&1; then
+            echo "Image suitdeer/syncthing4swarm:${DOCKER_TAG} already exists, skipping build."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Image suitdeer/syncthing4swarm:${DOCKER_TAG} not found, building."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check_existing.outputs.exists == 'false'
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up QEMU
+        if: steps.check_existing.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@v3.7.0
+
+      - name: Set up Docker Buildx
+        if: steps.check_existing.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3.12.0
+
+      - name: Login to Docker Hub
+        if: steps.check_existing.outputs.exists == 'false'
+        uses: docker/login-action@v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
+
+      - name: Build and push
+        if: steps.check_existing.outputs.exists == 'false'
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ./dev
+          push: true
+          platforms: linux/amd64,linux/arm64,linux/arm/7
+          build-args: |
+            SYNCTHING_VERSION=${{ steps.upstream.outputs.docker_tag }}
+          tags: |
+            suitdeer/syncthing4swarm:${{ steps.upstream.outputs.docker_tag }}
+            suitdeer/syncthing4swarm:latest

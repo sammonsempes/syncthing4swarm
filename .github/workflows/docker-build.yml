@@ -11,13 +11,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3.12.0
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_ACCESS_TOKEN }}
@@ -33,8 +33,10 @@ jobs:
           fi
 
       - name: Build and push
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6.18.0
         with:
-          context: .
+          context: ./dev
           push: true
+          build-args: |
+            SYNCTHING_VERSION=latest
           tags: syncthing4swarm/syncthing4swarm:${{ steps.docker_tag.outputs.tag }}
