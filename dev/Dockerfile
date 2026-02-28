@@ -1,4 +1,4 @@
-ARG SYNCTHING_VERSION=latest
+ARG SYNCTHING_VERSION=2.0.14
 FROM syncthing/syncthing:${SYNCTHING_VERSION}
 
 COPY entrypoint.sh /entrypoint.sh
