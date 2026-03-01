@@ -132,7 +132,7 @@ sudo docker stack deploy -c docker-compose-dev.yml syncthing4swarm
 # Watch how syncthing connects itself with other nodes.
 # Initial setup takes about 5 minutes to finish
 sudo docker service logs syncthing4swarm_syncthing4swarm -f
-
+ 
 ## Testing ...
 
 # Remove stack
