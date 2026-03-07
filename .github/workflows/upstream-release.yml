@@ -40,11 +40,11 @@ jobs:
         id: check_existing
         run: |
           DOCKER_TAG="${{ steps.upstream.outputs.docker_tag }}"
-          if docker manifest inspect suitdeer/syncthing4swarm:${DOCKER_TAG} > /dev/null 2>&1; then
-            echo "Image suitdeer/syncthing4swarm:${DOCKER_TAG} already exists, skipping build."
+          if docker manifest inspect syncthing4swarm/syncthing4swarm:${DOCKER_TAG} > /dev/null 2>&1; then
+            echo "Image syncthing4swarm/syncthing4swarm:${DOCKER_TAG} already exists, skipping build."
             echo "exists=true" >> $GITHUB_OUTPUT
           else
-            echo "Image suitdeer/syncthing4swarm:${DOCKER_TAG} not found, building."
+            echo "Image syncthing4swarm/syncthing4swarm:${DOCKER_TAG} not found, building."
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
@@ -77,5 +77,5 @@ jobs:
           build-args: |
             SYNCTHING_VERSION=${{ steps.upstream.outputs.docker_tag }}
           tags: |
-            suitdeer/syncthing4swarm:${{ steps.upstream.outputs.docker_tag }}
-            suitdeer/syncthing4swarm:latest
+            syncthing4swarm/syncthing4swarm:${{ steps.upstream.outputs.docker_tag }}
+            syncthing4swarm/syncthing4swarm:latest
